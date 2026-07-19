@@ -1,0 +1,17 @@
+{
+    "tanggal_uji": "2026-07-06T15:20:05.493513",
+    "algoritma": "AES-256-GCM",
+    "kdf": "PBKDF2-SHA256 (210.000 iterasi)",
+    "threshold": 7.9,
+    "rata_rata_entropi": 5.0374,
+    "jumlah_sampel": 1,
+    "lulus": false,
+    "detail_sampel": [
+        {
+            "label": "Jurnal Firebase 1",
+            "bytes": 38,
+            "entropy": 5.0374,
+            "status": "KURANG ACAK (Tidak Memenuhi Standar)"
+        }
+    ]
+}

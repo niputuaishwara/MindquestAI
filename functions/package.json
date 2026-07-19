@@ -1,0 +1,21 @@
+{
+  "name": "functions",
+  "description": "Cloud Functions untuk MindQuest — analisis emosi via Gemini API",
+  "main": "src/index.js",
+  "type": "module",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "serve": "firebase emulators:start --only functions",
+    "shell": "firebase functions:shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.3.1",
+    "firebase-functions": "^5.0.1",
+    "@google/generative-ai": "^0.17.1"
+  },
+  "private": true
+}

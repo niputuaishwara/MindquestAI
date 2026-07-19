@@ -1,0 +1,72 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    function isAdmin() {
+      return request.auth != null && getUserData().role == 'admin';
+    }
+
+    function isPsychologist() {
+      return request.auth != null && getUserData().role == 'psychologist';
+    }
+
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    match /users/{userId} {
+      // Siapapun yang login bisa baca profil dasar (untuk cek role)
+      allow read: if request.auth != null;
+      allow write: if isOwner(userId) || isAdmin();
+    }
+
+    // Jurnal (Dienkripsi, jadi aman meski psikolog bisa 'read' secara aturan database)
+    match /journals/{userId}/entries/{entryId} {
+      allow read: if isOwner(userId) || isPsychologist() || isAdmin();
+      allow write: if isOwner(userId);
+    }
+
+    // Sesi obrolan (Dienkripsi)
+    match /journals/{userId}/sessions/{sessionId} {
+      allow read: if isOwner(userId) || isPsychologist() || isAdmin();
+      allow write: if isOwner(userId);
+    }
+
+    match /userState/{userId} {
+      allow read: if isOwner(userId) || isPsychologist() || isAdmin();
+      allow write: if isOwner(userId);
+    }
+
+    match /consultations/{codeId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Statistik global (bisa dibaca semua, ditulis admin)
+    match /stats/{statId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+
+    // Live Chat Anonim
+    match /chats/{chatId} {
+      allow read: if isPsychologist() || isAdmin() || (request.auth != null && resource.data.userId == request.auth.uid);
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update: if isPsychologist() || isAdmin() || (request.auth != null && resource.data.userId == request.auth.uid);
+      allow delete: if isAdmin() || (request.auth != null && resource.data.userId == request.auth.uid);
+      
+      match /messages/{messageId} {
+        allow read, write: if request.auth != null; // Kita percayakan akses ke dokumen parent (chatId) via aplikasi untuk filter lebih lanjut
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
