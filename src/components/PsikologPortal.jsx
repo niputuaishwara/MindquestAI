@@ -248,19 +248,62 @@ export function PsikologPortal({ onBack, currentUser, profile }) {
               </div>
 
               {/* KOLOM JURNAL */}
-              <div className="w-full lg:w-[45%] flex flex-col min-h-0 bg-space-deep/50">
-                <div className="p-4 border-b border-space-bright bg-space-deep/80 shrink-0">
+              <div className="w-full lg:w-[45%] flex flex-col min-h-0 bg-space-deep/50 border-t lg:border-t-0 border-space-bright">
+                <div className="p-4 border-b border-space-bright bg-space-deep/80 shrink-0 flex justify-between items-center">
                   <h3 className="font-bold text-vellum flex items-center gap-2 font-serif tracking-wide text-sm">
                     <BookOpen className="w-4 h-4 text-gold" /> Jurnal & Tren Batin
                   </h3>
+                  <div className="px-2 py-1 bg-emerald-500/20 border border-emerald-500/30 rounded text-[9px] font-mono text-emerald-400 flex items-center gap-1 shadow-[0_0_10px_rgba(16,185,129,0.1)]">
+                    <Shield className="w-3 h-3" /> Akses Disetujui (User Consent)
+                  </div>
                 </div>
 
-                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-space-deep/30">
-                  <Shield className="w-16 h-16 mb-6 text-gold/50" />
-                  <p className="font-serif text-lg text-vellum mb-2">Riwayat Terlindungi (Zero-Knowledge)</p>
-                  <p className="text-sm text-magic-light/70">
-                    Berdasarkan standar privasi ketat, psikolog hanya memiliki akses ke percakapan <i>live chat</i> saat ini. Riwayat jurnal masa lalu sepenuhnya dienkripsi secara lokal di perangkat klien dan tidak dapat dibaca oleh siapa pun.
-                  </p>
+                <div className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar">
+                  {/* Mock Trend Chart */}
+                  <div className="p-4 bg-space-light/30 rounded-xl border border-space-bright shadow-lg">
+                    <h4 className="text-[10px] font-mono font-bold text-magic-light/70 uppercase tracking-widest mb-4 flex items-center gap-2">
+                      <Activity className="w-3.5 h-3.5 text-gold" /> Grafik Ketenangan (7 Hari Terakhir)
+                    </h4>
+                    <div className="h-32 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={[
+                          { name: 'Sen', score: 3 }, { name: 'Sel', score: 4 }, { name: 'Rab', score: 6 },
+                          { name: 'Kam', score: 4 }, { name: 'Jum', score: 8 }, { name: 'Sab', score: 7 }, { name: 'Min', score: 9 }
+                        ]}>
+                          <Line type="monotone" dataKey="score" stroke="#F2CA50" strokeWidth={2.5} dot={{ r: 4, fill: '#14142B', stroke: '#F2CA50', strokeWidth: 2 }} activeDot={{ r: 6, fill: '#F2CA50' }} />
+                          <Tooltip 
+                            contentStyle={{ backgroundColor: '#21213E', borderColor: '#303050', borderRadius: '8px', color: '#FDFBF7', fontSize: '12px' }} 
+                            itemStyle={{ color: '#F2CA50' }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Mock Decrypted Journals */}
+                  <div className="space-y-3">
+                    <h4 className="text-[10px] font-mono font-bold text-magic-light/70 uppercase tracking-widest flex items-center gap-2 mb-2">
+                      <BookOpen className="w-3.5 h-3.5 text-gold" /> Dekripsi Jurnal Terbaru
+                    </h4>
+                    
+                    {[
+                      { date: 'Hari ini', title: 'Kedamaian di Bawah Hujan', mood: 'Tenang', score: 9, text: 'Hari ini saya merasa lebih tenang setelah bermeditasi sejenak. Hujan di luar membuat pikiran saya tidak lagi berlarian. Saya sudah bisa menerima keadaan.' },
+                      { date: 'Kemarin', title: 'Beban yang Sedikit Terangkat', mood: 'Lelah', score: 7, text: 'Pekerjaan sangat menumpuk, tapi saya berhasil membaginya menjadi tugas-tugas kecil. Malam ini saya bisa tidur nyenyak tanpa terbangun di tengah malam.' }
+                    ].map((j, i) => (
+                      <div key={i} className="p-4 bg-space-deep/80 rounded-xl border border-space-bright hover:border-gold/30 transition-colors shadow-md">
+                        <div className="flex justify-between items-start mb-2.5">
+                          <div>
+                            <div className="text-[9px] font-mono text-gold mb-1 uppercase tracking-wider">{j.date}</div>
+                            <h5 className="font-serif text-sm font-bold text-vellum leading-tight">{j.title}</h5>
+                          </div>
+                          <div className="px-2 py-1 bg-space-bright/50 rounded border border-space-bright text-[10px] font-mono text-vellum flex items-center gap-1">
+                            Skor: {j.score}
+                          </div>
+                        </div>
+                        <p className="text-xs text-magic-light leading-relaxed italic border-l-2 border-space-bright pl-3 my-2">"{j.text}"</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>

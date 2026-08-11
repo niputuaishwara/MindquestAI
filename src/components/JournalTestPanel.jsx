@@ -29,28 +29,35 @@ export default function JournalTestPanel() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatHistory]);
 
-  const callDirectGemini = async (msg, history) => {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || "";
+  const callDirectGroq = async (msg, history) => {
+    const apiKey = import.meta.env.VITE_GROQ_API_KEY || "";
     if (!apiKey) throw new Error("API Key tidak ditemukan.");
     
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+    const url = `https://api.groq.com/openai/v1/chat/completions`;
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
       body: JSON.stringify({
-        contents: [...history.map(h => ({ role: h.role, parts: [{ text: h.parts[0].text }] })), 
-                   { role: 'user', parts: [{ text: msg }] }]
+        messages: [
+          ...history.map(h => ({ role: h.role === 'model' ? 'assistant' : 'user', content: h.parts[0].text })), 
+          { role: 'user', content: msg }
+        ],
+        model: 'llama-3.3-70b-versatile',
+        temperature: 0.5,
       })
     });
     const data = await response.json();
-    return { message: data.candidates[0].content.parts[0].text };
+    return { message: data.choices[0]?.message?.content || "" };
   };
 
   const handleSend = async () => {
     if (!text.trim()) return;
     setLoading(true);
     try {
-      const aiResult = await callDirectGemini(text, chatHistory);
+      const aiResult = await callDirectGroq(text, chatHistory);
       setChatHistory(prev => [...prev, { role: 'user', parts: [{ text }] }, { role: 'model', parts: [{ text: aiResult.message }] }]);
       setText('');
     } catch (err) {

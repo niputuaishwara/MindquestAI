@@ -348,50 +348,50 @@ export default function App() {
     }
   }
 
-  // Fallback direct Gemini client-side API call
-  const callDirectGemini = async (msg, history) => {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || ""
-    if (!apiKey) throw new Error("VITE_GEMINI_API_KEY tidak ditemukan.")
+  // Fallback direct Groq client-side API call
+  const callDirectGroq = async (msg, history) => {
+    const apiKey = import.meta.env.VITE_GROQ_API_KEY || ""
+    if (!apiKey) throw new Error("VITE_GROQ_API_KEY tidak ditemukan.")
     
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`
+    const url = `https://api.groq.com/openai/v1/chat/completions`
     
     const formattedContents = [
+      { role: 'system', content: SYSTEM_PROMPT },
       ...history.map(h => ({
-        role: h.role,
-        parts: [{ text: h.parts[0].text }]
+        role: h.role === 'model' ? 'assistant' : 'user',
+        content: h.parts && h.parts[0] ? h.parts[0].text : ''
       })),
-      {
-        role: 'user',
-        parts: [{ text: msg }]
-      }
+      { role: 'user', content: msg }
     ]
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
       body: JSON.stringify({
-        contents: formattedContents,
-        systemInstruction: {
-          parts: [{ text: SYSTEM_PROMPT }]
-        },
-        generationConfig: {
-          responseMimeType: 'application/json'
-        }
+        messages: formattedContents,
+        model: 'llama-3.3-70b-versatile',
+        temperature: 0.5,
+        response_format: { type: 'json_object' }
       })
     })
 
     if (!response.ok) {
-      throw new Error(`Direct API failed with status ${response.status}`)
+      const errBody = await response.json().catch(() => ({}))
+      console.error(`[DirectGroq] HTTP ${response.status}:`, JSON.stringify(errBody))
+      throw new Error(`Direct API failed with status ${response.status}: ${errBody?.error?.message || JSON.stringify(errBody)}`)
     }
 
     const data = await response.json()
-    const rawText = data.candidates[0].content.parts[0].text
+    const rawText = data.choices[0]?.message?.content || '{}'
     
     try {
       const cleaned = rawText.replace(/```json|```/g, '').trim()
       return JSON.parse(cleaned)
     } catch (err) {
-      console.warn("Direct Gemini JSON parse error:", err, "Raw Text:", rawText)
+      console.warn("Direct Groq JSON parse error:", err, "Raw Text:", rawText)
       return {
         phase: 'deepening',
         message: "Maaf, aku sedang memproses perasaanmu tapi rasanya koneksi batinku sedikit terganggu. Bisa tolong ulangi skormu?",
@@ -415,8 +415,9 @@ export default function App() {
         const userMsg = { role: 'user', parts: [{ text }] }
         const newHistory = [...localHistory, userMsg]
         setLocalHistory(newHistory)
-
-        const aiResult = await callDirectGemini(text, localHistory)
+        
+        // Fallback langsung ke Groq API jika backend gagal
+        const aiResult = await callDirectGroq(text, localHistory)
         
         const isHighNegative = aiResult.result && 
           (aiResult.result.emotionType?.toLowerCase() === 'negative' || aiResult.result.emotionType?.toLowerCase() === 'negatif') && 
@@ -459,7 +460,7 @@ export default function App() {
           }
         }
       } catch (err) {
-        console.error("Gagal memanggil direct Gemini:", err)
+        console.error("Gagal memanggil direct Groq:", err)
         const errorMsg = { role: 'model', parts: [{ text: `Hubungan magisku dengan bintang-bintang sedang terganggu. Error: ${err.message || 'Unknown'}. Mari kita coba lagi nanti...` }] }
         setLocalHistory(prev => [...prev, errorMsg])
       } finally {
@@ -472,13 +473,17 @@ export default function App() {
         const trendData = generateTrendSummary(entries)
         await sendConversation(text, trendData.narrative, trendData.trendDirection, trendData.consecutiveNegativeDays, trendData.hasDistressCategoryEntry)
       } catch (err) {
-        console.warn("Cloud function failed, falling back to direct client-side Gemini:", err)
+        console.warn("Cloud function failed, falling back to direct client-side Groq:", err)
         setIsLocalChatActive(true)
-        const seededHistory = [...chatHistoryRaw, { role: 'user', parts: [{ text }] }]
-        setLocalHistory(seededHistory)
+        // Konversi history yang mentah dari state agar cocok dengan format array biasa
+        const historyForFallback = chatHistoryRaw.map(m => ({
+          role: m.sender === 'user' ? 'user' : 'model',
+          parts: [{ text: m.text || m.parts?.[0]?.text }]
+        }))
+        setLocalHistory([...historyForFallback, { role: 'user', parts: [{ text }] }])
 
         try {
-          const aiResult = await callDirectGemini(text, chatHistoryRaw)
+          const aiResult = await callDirectGroq(text, historyForFallback)
           
           const isHighNegative = aiResult.result && 
             (aiResult.result.emotionType?.toLowerCase() === 'negative' || aiResult.result.emotionType?.toLowerCase() === 'negatif') && 
@@ -498,7 +503,7 @@ export default function App() {
 
           if (aiResult.isComplete && aiResult.result) {
             await saveSession(user.uid, dataKey, {
-              history: [...seededHistory, modelMsg],
+              history: [...historyForFallback, { role: 'user', parts: [{ text }] }, modelMsg],
               emotionLabel: aiResult.result.emotionLabel,
               emotionType: aiResult.result.emotionType,
               score: aiResult.result.score,
@@ -626,24 +631,32 @@ export default function App() {
     try {
       const activeQuestObj = quests.find((q) => q.id === stats.activeQuestId)
       
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY || ""
-      if (!apiKey) throw new Error("VITE_GEMINI_API_KEY tidak ditemukan.")
+      // 1. Direct fetch ke Groq API untuk memproses summary
+      const apiKey = import.meta.env.VITE_GROQ_API_KEY || ""
+      if (!apiKey) throw new Error("VITE_GROQ_API_KEY tidak ditemukan.")
 
-      const prompt = `Berikan petuah kebijaksanaan puitis satu paragraf singkat (maksimal 3 kalimat) dalam Bahasa Indonesia untuk seorang remaja yang sedang merasa "${currentMood}" dan sedang menjalankan misi "${activeQuestObj ? activeQuestObj.title : 'Penjelajahan Jiwa'}". Bicaralah dengan gaya dongeng yang bijak, hangat, dan menenangkan seperti Si Rusa Berbintang. Jangan gunakan JSON atau markdown, langsung teks saja.`
+      const promptSummary = `Berikan petuah kebijaksanaan puitis satu paragraf singkat (maksimal 3 kalimat) dalam Bahasa Indonesia untuk seorang remaja yang sedang merasa "${currentMood}" dan sedang menjalankan misi "${activeQuestObj ? activeQuestObj.title : 'Penjelajahan Jiwa'}". Bicaralah dengan gaya dongeng yang bijak, hangat, dan menenangkan seperti Si Rusa Berbintang. Jangan gunakan JSON atau markdown, langsung teks saja.`
       
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`
+      const url = `https://api.groq.com/openai/v1/chat/completions`
+
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
         body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }]
+          messages: [{ role: 'user', content: promptSummary }],
+          model: 'llama-3.3-70b-versatile',
+          temperature: 0.5
         })
       })
 
-      if (!response.ok) throw new Error("Failed to fetch wisdom")
-      
+      if (!response.ok) throw new Error(`HTTP ${response.status} dari Groq API`)
+
       const data = await response.json()
-      setWisdomText(data.candidates[0].content.parts[0].text)
+      let analysisText = data.choices[0]?.message?.content || ""
+      setWisdomText(analysisText)
     } catch (err) {
       console.warn("Gagal mengambil petuah bimbingan:", err)
       setWisdomText("Ketika jiwamu terasa berat ditiup badai pikiran, ingatlah bahwa dahan rimbun MindQuest senantiasa teduh melindungimu. Pejamkan matamu, rasakan rasi bintang memeluk nadamu.")

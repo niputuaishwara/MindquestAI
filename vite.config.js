@@ -73,6 +73,11 @@ export default defineConfig({
             handler: 'NetworkOnly'
           },
           {
+            // Gemini API (direct fallback) — Network Only, never cache
+            urlPattern: /^https:\/\/generativelanguage\.googleapis\.com\/.*/i,
+            handler: 'NetworkOnly'
+          },
+          {
             // Aset statis (font, gambar) — Cache First
             urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|woff2)$/i,
             handler: 'CacheFirst',

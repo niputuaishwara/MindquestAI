@@ -1,14 +1,14 @@
 // functions/src/agents/conversationAgent.js
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import Groq from 'groq-sdk'
 import { SYSTEM_PROMPT } from '../systemPrompt.js'
 
 /**
- * Conversation Agent — memanggil Gemini LLM untuk memproses histori dan pesan.
+ * Conversation Agent — memanggil Groq LLM untuk memproses histori dan pesan.
  * Memastikan output di-parse dengan benar dan divalidasi sesuai fase.
  */
 export async function runConversation(apiKey, history, message, trendSummary = "") {
   try {
-    const genAI = new GoogleGenerativeAI(apiKey)
+    const groq = new Groq({ apiKey })
 
     // Inject trendSummary into system instructions if provided
     let dynamicPrompt = SYSTEM_PROMPT;
@@ -16,19 +16,29 @@ export async function runConversation(apiKey, history, message, trendSummary = "
       dynamicPrompt += `\n\n═══════════════════════════════════════\nINFORMASI TREN PENGGUNA (Hanya untuk konteks, tidak perlu disebut eksplisit kecuali relevan)\n═══════════════════════════════════════\n${trendSummary}\n`;
     }
 
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-      systemInstruction: dynamicPrompt,
-      generationConfig: {
-        temperature: 0.5,
-        maxOutputTokens: 512,
-        responseMimeType: 'application/json'
+    const messages = [{ role: 'system', content: dynamicPrompt }];
+
+    // Konversi histori dari format Gemini (role: 'user'/'model', parts: [{text: '...'}])
+    // ke format Groq/OpenAI (role: 'user'/'assistant', content: '...')
+    for (const h of history) {
+      const role = h.role === 'model' ? 'assistant' : 'user';
+      const content = h.parts && h.parts[0] ? h.parts[0].text : '';
+      if (content) {
+        messages.push({ role, content });
       }
+    }
+
+    messages.push({ role: 'user', content: message });
+
+    const completion = await groq.chat.completions.create({
+      messages: messages,
+      model: 'llama-3.3-70b-versatile',
+      temperature: 0.5,
+      max_tokens: 2048,
+      response_format: { type: 'json_object' }
     })
 
-    const chat = model.startChat({ history })
-    const result = await chat.sendMessage(message)
-    const rawText = result.response.text()
+    const rawText = completion.choices[0]?.message?.content || '{}';
 
     let parsed
     try {

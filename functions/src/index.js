@@ -1,6 +1,6 @@
 // functions/src/index.js
 // Cloud Functions MindQuest — Fase 2.
-// analyzeEmotion: endpoint multi-turn percakapan AI via Gemini API.
+// analyzeEmotion: endpoint multi-turn percakapan AI via Groq API.
 
 import { initializeApp } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
@@ -12,16 +12,42 @@ import { runConversation } from './agents/conversationAgent.js'
 
 initializeApp()
 
-export const geminiApiKey = defineSecret('GEMINI_API_KEY')
+export const groqApiKey = defineSecret('GROQ_API_KEY')
+
+// ─── Rate Limiting (in-memory, per IP) — FIX AT-04-A1 ───────────────────────
+// Sederhana dan cukup untuk 1 instance function. CATATAN JUJUR: karena Cloud
+// Functions bisa scale ke banyak instance, Map ini TIDAK dibagi antar
+// instance — pada beban tinggi/multi-instance nyata, penyerang berpotensi
+// mendapat lebih banyak jatah efektif daripada MAX_REQUESTS di bawah ini.
+// Untuk produksi sesungguhnya, R-01 di paper tetap merekomendasikan Firebase
+// App Check atau rate limiter terpusat (mis. Redis/Firestore counter).
+const rateLimitStore = new Map()
+const RATE_LIMIT_MAX = 10
+const RATE_LIMIT_WINDOW_MS = 60_000
+
+function isRateLimited(ip) {
+  const now = Date.now()
+  const timestamps = (rateLimitStore.get(ip) || []).filter(t => now - t < RATE_LIMIT_WINDOW_MS)
+  if (timestamps.length >= RATE_LIMIT_MAX) {
+    rateLimitStore.set(ip, timestamps)
+    return true
+  }
+  timestamps.push(now)
+  rateLimitStore.set(ip, timestamps)
+  return false
+}
+
+// ─── Payload Size Validation — FIX AT-04-A2 ─────────────────────────────────
+const MAX_MESSAGE_LENGTH = 5000
 
 // ─── Healthcheck (Fase 0, tetap dipertahankan) ───────────────────────────────
 export const healthCheck = onRequest(
-  { region: 'asia-southeast2', secrets: [geminiApiKey] },
+  { region: 'asia-southeast2', secrets: [groqApiKey] },
   (req, res) => {
     res.status(200).json({
       status: 'ok',
       service: 'mindquest-functions',
-      geminiKeyConfigured: Boolean(geminiApiKey.value())
+      groqKeyConfigured: Boolean(groqApiKey.value())
     })
   }
 )
@@ -42,10 +68,34 @@ export const healthCheck = onRequest(
 export const analyzeEmotion = onRequest(
   {
     region: 'asia-southeast2',
-    secrets: [geminiApiKey],
-    cors: true
+    secrets: [groqApiKey]
+    // cors bukan di sini — di-handle manual di dalam handler agar
+    // OPTIONS preflight tidak dicegat middleware sebelum kode kita jalan
   },
   async (req, res) => {
+    // ── 0. CORS headers (emulator + production) ───────────────────────────────
+    const allowedOrigins = [
+      'http://localhost:5173',
+      'http://127.0.0.1:5173',
+      'http://localhost:5000',
+      'https://mindquest-app-f216d.web.app',
+      'https://mindquest-app-f216d.firebaseapp.com'
+    ]
+    const origin = req.headers.origin || ''
+    if (allowedOrigins.includes(origin)) {
+      res.set('Access-Control-Allow-Origin', origin)
+    } else {
+      res.set('Access-Control-Allow-Origin', 'http://localhost:5173')
+    }
+    res.set('Access-Control-Allow-Methods', 'POST, OPTIONS')
+    res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+    res.set('Access-Control-Max-Age', '3600')
+
+    // Handle preflight
+    if (req.method === 'OPTIONS') {
+      return res.status(204).send('')
+    }
+
     // ── 1. Method guard ──────────────────────────────────────────────────────
     if (req.method !== 'POST') {
       return res.status(405).json({ error: 'Method not allowed' })
@@ -82,7 +132,24 @@ export const analyzeEmotion = onRequest(
       return res.status(400).json({ error: 'Field "history" harus berupa array.' })
     }
 
-    // ── 3.5 Crisis Guard (Pre-LLM) ──────────────────────────────────────────
+    // ── 4. Payload Size Validation (AT-04-A2) ────────────────────────────────
+    // Sengaja dicek SEBELUM rate limiter: payload oversized harus selalu
+    // ditolak 400 tanpa ikut "memakan" jatah rate limit milik IP tersebut.
+    if (message.length > MAX_MESSAGE_LENGTH) {
+      return res.status(400).json({
+        error: `Pesan terlalu panjang (maksimal ${MAX_MESSAGE_LENGTH} karakter).`
+      })
+    }
+
+    // ── 5. Rate Limiting (AT-04-A1) ──────────────────────────────────────────
+    const clientIp = req.ip || req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 'unknown'
+    if (isRateLimited(clientIp)) {
+      return res.status(429).json({
+        error: 'Terlalu banyak permintaan. Coba lagi dalam beberapa saat.'
+      })
+    }
+
+    // ── 6. Crisis Guard (Pre-LLM) ────────────────────────────────────────────
     const crisisCheck = checkCrisisSignal(message)
     if (crisisCheck.triggered) {
       console.log(`[CrisisGuard] Triggered by pattern: ${crisisCheck.matchedPattern}`)
@@ -91,9 +158,9 @@ export const analyzeEmotion = onRequest(
       return res.status(200).json(responseObj)
     }
 
-    // ── 4. Panggil Gemini API (via Conversation Agent) ──────────────────────
+    // ── 4. Panggil Groq API (via Conversation Agent) ──────────────────────
     try {
-      const parsed = await runConversation(geminiApiKey.value(), history, message, trendSummary)
+      const parsed = await runConversation(groqApiKey.value(), history, message, trendSummary)
 
       // ── 7. Action Decision (Post-LLM) ────────────────────────────────────
       const finalResponse = decideAction(parsed, consecutiveNegativeDays, trendDirection, hasDistressCategoryEntry)
@@ -101,7 +168,7 @@ export const analyzeEmotion = onRequest(
       return res.status(200).json(finalResponse)
 
     } catch (err) {
-      console.error('Gemini API error:', err)
+      console.error('Groq API error:', err)
       return res.status(500).json({
         error: 'Gagal menghubungi layanan AI. Coba beberapa saat lagi.',
         detail: err.message

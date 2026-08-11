@@ -4,16 +4,17 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // Helper functions
-    function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    function getUserRole() {
+      let userDoc = /databases/$(database)/documents/users/$(request.auth.uid);
+      return exists(userDoc) ? get(userDoc).data.role : 'user';
     }
-    
+
     function isAdmin() {
-      return request.auth != null && getUserData().role == 'admin';
+      return request.auth != null && getUserRole() == 'admin';
     }
 
     function isPsychologist() {
-      return request.auth != null && getUserData().role == 'psychologist';
+      return request.auth != null && getUserRole() == 'psychologist';
     }
 
     function isOwner(userId) {
@@ -21,8 +22,10 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      // Siapapun yang login bisa baca profil dasar (untuk cek role)
-      allow read: if request.auth != null;
+      // FIX (IDOR — AT-02-A2): sebelumnya "allow read: if request.auth != null;"
+      // mengizinkan SIAPA SAJA yang login (termasuk anonymous) membaca profil
+      // pengguna lain. Sekarang hanya pemilik, psikolog, atau admin yang boleh.
+      allow read: if isOwner(userId) || isPsychologist() || isAdmin();
       allow write: if isOwner(userId) || isAdmin();
     }
 
@@ -63,6 +66,14 @@ service cloud.firestore {
       match /messages/{messageId} {
         allow read, write: if request.auth != null; // Kita percayakan akses ke dokumen parent (chatId) via aplikasi untuk filter lebih lanjut
       }
+    }
+
+    // Activity Logs (Non-Repudiation)
+    match /activity_logs/{logId} {
+      allow read: if isAdmin();
+      // Hanya bisa buat baru (append-only), tidak bisa diubah atau dihapus
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
     }
 
     match /{document=**} {

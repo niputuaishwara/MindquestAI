@@ -39,7 +39,11 @@ export const functions = getFunctions(app, 'asia-southeast2')
 // Guard `window.__FIREBASE_EMULATOR_CONNECTED__` mencegah error
 // "already connected" akibat Hot Module Reload (HMR) Vite saat dev,
 // yang bisa menjalankan ulang isi module ini tanpa reload penuh browser.
+// Ubah USE_EMULATOR ke `true` jika ingin memakai emulator lokal lagi
+const USE_EMULATOR = false;
+
 if (
+  USE_EMULATOR &&
   (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') &&
   !window.__FIREBASE_EMULATOR_CONNECTED__
 ) {
