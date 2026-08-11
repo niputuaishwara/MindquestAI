@@ -35,7 +35,7 @@ Membangun aplikasi jurnal ekspresif adaptif yang aman secara kriptografis dan di
 
 ### 1. Solusi Arsitektur Agentic AI (MindQuest AI)
 
-Pusat interaksi aplikasi ini ditenagai oleh **Agentic AI** berbasis **Groq API** dengan model **LLaMA-3.3-70b-versatile** (menggantikan Gemini API karena pertimbangan kecepatan inferensi). AI di MindQuest tidak sekadar merespons teks sebagai *chatbot* biasa, melainkan dirancang sebagai **Multi-Agent System** (sistem multi-agen) dengan pendekatan *Agentic Workflow* yang berjalan terisolasi di sisi *backend* (Firebase Cloud Functions).
+Pusat interaksi aplikasi ini ditenagai oleh **Agentic AI** berbasis **Groq API** dengan model **LLaMA-3.3-70b-versatile**, dipilih menggantikan Gemini API karena pertimbangan kecepatan inferensi. AI di MindQuest tidak sekadar merespons teks sebagai *chatbot* biasa, melainkan dirancang sebagai **Multi-Agent System** (sistem multi-agen) dengan pendekatan *Agentic Workflow* yang berjalan terisolasi di sisi *backend* (Firebase Cloud Functions).
 
 Filosofi utama AI di sini adalah sebagai **pendamping reflektif**, bukan pengganti tenaga profesional. Oleh karena itu, interaksi pengguna dikelilingi oleh 5 lapis *Guardrails* (pagar pengaman) *defense-in-depth* guna memitigasi risiko halusinasi, injeksi prompt, atau saran klinis yang berbahaya.
 
@@ -116,11 +116,12 @@ Antarmuka didesain menggunakan filosofi visual yang menenangkan, menghilangkan k
 |---|---|
 | Frontend | React.js + Phaser.js (gamifikasi RPG) |
 | Backend / Infrastruktur | Firebase (Firestore + Cloud Functions) |
-| Kecerdasan Buatan | Gemini API (arsitektur multi-agent) |
+| Kecerdasan Buatan | Groq API — LLaMA-3.3-70b-versatile (arsitektur multi-agent) |
 | Enkripsi | AES-256-GCM via Web Crypto API |
 | Transport | TLS 1.3 |
 | PWA / Offline | Service Worker (Workbox) |
 | Keamanan Kode | Semgrep, njsscan (SAST) |
+
 **Diagram Arsitektur Multi-Agent & Kriptografi:**
 ```mermaid
 graph TD
@@ -145,7 +146,7 @@ graph TD
     end
 
     subgraph External ["External LLM"]
-        LLM["Groq API (LLaMA-3)"]:::ext
+        LLM["Groq API (LLaMA-3.3-70b-versatile)"]:::ext
     end
 
     %% Data Flow
@@ -168,7 +169,7 @@ graph TD
 1. Pengguna menulis entri jurnal di klien (React PWA).
 2. Teks dienkripsi secara lokal (AES-256-GCM) sebelum meninggalkan perangkat.
 3. *Ciphertext* + IV dikirim via TLS 1.3 ke Firestore — server tidak pernah melihat *plaintext*.
-4. Untuk interaksi AI, teks diproses melalui Cloud Function yang menjalankan *multi-agent system* (Crisis Guard + Conversation & Reflection Agent + Action Decision Agent) dengan mitigasi kerentanan *OWASP for LLM*.
+4. Untuk interaksi AI, teks diproses melalui Cloud Function yang menjalankan *multi-agent system* (Crisis Guard + Conversation & Reflection Agent berbasis Groq API/LLaMA-3.3-70b-versatile + Action Decision Agent) dengan mitigasi kerentanan *OWASP for LLM*.
 5. Respons AI dan status emosi dievaluasi oleh *Action Decision Agent* yang kemudian menentukan tindakan aplikasi (eksplorasi → pemantauan → quest → rujukan psikolog).
 
 ---
@@ -177,10 +178,12 @@ graph TD
 
 | Aspek | Instrumen / Metrik | Target |
 |---|---|---|
-| Usabilitas | System Usability Scale (SUS) | — |
-| Kepuasan klien | Client Satisfaction Questionnaire (CSQ-8) | — |
+| Usabilitas | System Usability Scale (SUS) | *TBD* |
+| Kepuasan klien | Client Satisfaction Questionnaire (CSQ-8) | *TBD* |
 | Akurasi deteksi emosi | F1-Score | ≥ 80% |
 | Kualitas enkripsi | Shannon Entropy | ≥ 7.9 bit/byte |
+
+> Target SUS dan CSQ-8 masih menunggu penetapan nilai ambang batas dan akan dilengkapi terpisah.
 
 ---
 
@@ -232,6 +235,7 @@ Proyek ini memuat 3 *script* pengujian (PoC) yang terdokumentasi di folder `/poc
 - **PoC-01 (Firestore Rules):** `npx firebase emulators:exec "node poc/poc-01-firestore-rules.mjs"`
 - **PoC-02 (AI Cloud Function Validation):** `node poc/poc-02-cloud-function.mjs` *(Script beroperasi pada Mode Reka Ulang/Mock untuk pembuktian temuan skripsi)*.
 - **PoC-03 (PWA Cache Audit):** Salin seluruh isi dari `poc/poc-03-pwa-cache-audit.js` dan tempelkan di *Console Browser* Chrome (F12) saat web MindQuest sedang berjalan.
+
 ---
 
 ## 🧪 Cara Mendemonstrasikan Dekripsi Manual (Untuk Penguji Sidang)
