@@ -121,13 +121,55 @@ Antarmuka didesain menggunakan filosofi visual yang menenangkan, menghilangkan k
 | Transport | TLS 1.3 |
 | PWA / Offline | Service Worker (Workbox) |
 | Keamanan Kode | Semgrep, njsscan (SAST) |
+**Diagram Arsitektur Multi-Agent & Kriptografi:**
+```mermaid
+graph TD
+    classDef client fill:#1e293b,stroke:#475569,stroke-width:2px,color:#f8fafc;
+    classDef server fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#f8fafc;
+    classDef agent fill:#334155,stroke:#8b5cf6,stroke-width:2px,color:#f8fafc;
+    classDef ext fill:#451a03,stroke:#f59e0b,stroke-width:2px,color:#f8fafc;
 
-**Alur data ringkas:**
+    subgraph Client ["Client-Side (React PWA)"]
+        UI["User Interface (Jurnal/Chat)"]:::client
+        Crypto["AES-256-GCM Encryption"]:::client
+    end
+
+    subgraph Backend ["Backend & AI (Firebase)"]
+        DB[("Firestore Database (Ciphertext)")]:::server
+        
+        subgraph MAS ["Agentic AI System (Cloud Functions)"]
+            Guard{"1. Crisis Guard Agent\n(Pre-LLM RegEx)"}:::agent
+            Conv["2. Conversation & Reflection Agent\n(LLM JSON Parser)"]:::agent
+            Action["3. Action Decision Agent\n(Evaluator)"]:::agent
+        end
+    end
+
+    subgraph External ["External LLM"]
+        LLM["Groq API (LLaMA-3)"]:::ext
+    end
+
+    %% Data Flow
+    UI -- "Teks Jurnal (Plaintext)" --> Crypto
+    Crypto -- "Ciphertext + IV\n(TLS 1.3)" --> DB
+    
+    UI -- "Minta Refleksi" --> Guard
+    Guard -- "Krisis Terdeteksi\n(Bypass LLM)" --> UI
+    Guard -- "Aman" --> Conv
+    
+    Conv -- "Prompt (Guardrails)" --> LLM
+    LLM -- "JSON Output" --> Conv
+    
+    Conv -- "Konteks Emosi" --> Action
+    DB -. "Histori 14 Hari" .-> Action
+    Action -- "Tindakan UI (SUGGEST_QUEST, dll)" --> UI
+```
+
+**Alur Data Ringkas:**
 1. Pengguna menulis entri jurnal di klien (React PWA).
 2. Teks dienkripsi secara lokal (AES-256-GCM) sebelum meninggalkan perangkat.
 3. *Ciphertext* + IV dikirim via TLS 1.3 ke Firestore — server tidak pernah melihat *plaintext*.
-4. Untuk interaksi AI, teks diproses melalui Cloud Function yang menjalankan *multi-agent system* (Crisis Guard + Conversation & Reflection Agent) dengan mitigasi OWASP-for-LLM.
-5. Respons AI dikembalikan ke klien; status emosi (dual-score) memperbarui *state machine* (eksplorasi → pemantauan → quest → rujukan) yang menentukan apakah *quest* ditawarkan atau rujukan psikolog dipicu.
+4. Untuk interaksi AI, teks diproses melalui Cloud Function yang menjalankan *multi-agent system* (Crisis Guard + Conversation & Reflection Agent + Action Decision Agent) dengan mitigasi kerentanan *OWASP for LLM*.
+5. Respons AI dan status emosi dievaluasi oleh *Action Decision Agent* yang kemudian menentukan tindakan aplikasi (eksplorasi → pemantauan → quest → rujukan psikolog).
 
 ---
 
