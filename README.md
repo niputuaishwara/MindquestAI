@@ -228,17 +228,10 @@ Karena arsitektur *Agentic AI* berjalan di **Firebase Cloud Functions**, disaran
 npm run emulators
 # atau
 npx firebase emulators:start
-```
-
-### Mengeksekusi Script Pengujian Keamanan (PoC)
-Proyek ini memuat 3 *script* pengujian (PoC) yang terdokumentasi di folder `/poc` untuk memvalidasi ketahanan arsitektur:
-- **PoC-01 (Firestore Rules):** `npx firebase emulators:exec "node poc/poc-01-firestore-rules.mjs"`
-- **PoC-02 (AI Cloud Function Validation):** `node poc/poc-02-cloud-function.mjs` *(Script beroperasi pada Mode Reka Ulang/Mock untuk pembuktian temuan skripsi)*.
-- **PoC-03 (PWA Cache Audit):** Salin seluruh isi dari `poc/poc-03-pwa-cache-audit.js` dan tempelkan di *Console Browser* Chrome (F12) saat web MindQuest sedang berjalan.
 
 ---
 
-## 🧪 Cara Mendemonstrasikan Dekripsi Manual (Untuk Penguji Sidang)
+## 🧪 Cara Mendemonstrasikan Dekripsi Manual 
 1. Ketuk teks **"Gulungan Memoar"** (pada tab Jurnal) sebanyak 5 kali secara cepat.
 2. Klik ikon 🔒 Gembok yang muncul di layar bagian atas hingga berubah warna menjadi Hijau.
 3. Buka salah satu entri jurnal (yang terlihat normal/bisa dibaca).
