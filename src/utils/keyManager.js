@@ -19,9 +19,15 @@ import {
  * Ambil data key milik user (kalau sudah pernah dibuat), atau buat baru kalau
  * ini pertama kalinya user tersebut login.
  * @param {string} uid
+ * @param {string} pin - PIN kriptografi pengguna
+ * @param {{ given: boolean, timestamp: string } | null} consentData
+ *   Objek consent yang harus diteruskan saat user baru membuat PIN pertama kali.
+ *   Jika diisi, field `consentGiven` dan `consentAt` akan ditulis ke Firestore
+ *   dalam setDoc yang SAMA dengan salt/wrappedKey — tanpa write terpisah,
+ *   sehingga tidak ada risiko race condition. Untuk returning user, biarkan null.
  * @returns {Promise<CryptoKey>} data key siap pakai untuk encryptText/decryptText
  */
-export async function getOrCreateDataKey(uid, pin) {
+export async function getOrCreateDataKey(uid, pin, consentData = null) {
   const userRef = doc(db, 'users', uid)
   const snapshot = await getDoc(userRef)
 
@@ -37,12 +43,20 @@ export async function getOrCreateDataKey(uid, pin) {
   const dataKey = await generateDataKey()
   const wrappedKey = await wrapDataKey(dataKey, wrappingKey)
 
+  // Tulis semua field — termasuk consent jika ada — dalam satu operasi setDoc
+  // agar tidak ada kemungkinan race condition antara write consent dan write key.
   await setDoc(
     userRef,
     {
       salt,
       wrappedKey,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      ...(consentData
+        ? {
+            consentGiven: consentData.given,    // boolean true
+            consentAt: consentData.timestamp    // ISO 8601 string
+          }
+        : {})
     },
     { merge: true }
   )

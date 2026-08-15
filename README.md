@@ -129,14 +129,15 @@ graph TD
     classDef server fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#f8fafc;
     classDef agent fill:#334155,stroke:#8b5cf6,stroke-width:2px,color:#f8fafc;
     classDef ext fill:#451a03,stroke:#f59e0b,stroke-width:2px,color:#f8fafc;
+    classDef psych fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#f8fafc;
 
     subgraph Client ["Client-Side (React PWA)"]
         UI["User Interface (Jurnal/Chat)"]:::client
-        Crypto["AES-256-GCM Encryption"]:::client
+        Crypto["Kriptografi (PBKDF2 + AES-256-GCM)"]:::client
     end
 
     subgraph Backend ["Backend & AI (Firebase)"]
-        DB[("Firestore Database (Ciphertext)")]:::server
+        DB[("Firestore Database\n(Penyimpanan Ciphertext)")]:::server
         
         subgraph MAS ["Agentic AI System (Cloud Functions)"]
             Guard{"1. Crisis Guard Agent\n(Pre-LLM RegEx)"}:::agent
@@ -148,29 +149,43 @@ graph TD
     subgraph External ["External LLM"]
         LLM["Groq API (LLaMA-3.3-70b-versatile)"]:::ext
     end
-
-    %% Data Flow
-    UI -- "Teks Jurnal (Plaintext)" --> Crypto
-    Crypto -- "Ciphertext + IV\n(TLS 1.3)" --> DB
     
-    UI -- "Minta Refleksi" --> Guard
+    subgraph Portal ["Portal Konseling"]
+        Dashboard["Dashboard Psikolog"]:::psych
+    end
+
+    %% Jalur 1: Akses & Penyimpanan Jurnal (E2EE)
+    UI -- "1. Teks Jurnal (Plaintext)" --> Crypto
+    Crypto -- "2. Ciphertext + IV\n(TLS 1.3)" --> DB
+    DB -. "3. Ciphertext + IV\n(Ditarik oleh Klien)" .-> Crypto
+    Crypto -. "4. Plaintext Jurnal\n(Dekripsi Lokal)" .-> UI
+    
+    %% Jalur 2: Analisis Emosi (Transient via HTTPS)
+    UI == "A. Pesan/Prompt (Plaintext)\nvia HTTPS POST" ==> Guard
     Guard -- "Krisis Terdeteksi\n(Bypass LLM)" --> UI
     Guard -- "Aman" --> Conv
     
-    Conv -- "Prompt (Guardrails)" --> LLM
-    LLM -- "JSON Output" --> Conv
+    Conv -- "B. Prompt + System Guardrails\n(Plaintext)" --> LLM
+    LLM -- "C. JSON Output\n(Analisis Emosi)" --> Conv
     
     Conv -- "Konteks Emosi" --> Action
-    DB -. "Histori 14 Hari" .-> Action
-    Action -- "Tindakan UI (SUGGEST_QUEST, dll)" --> UI
+    Action -- "D. Tindakan UI (SUGGEST_QUEST)" --> UI
+    Action -. "E. Hasil Analisis Emosi\n(Syarat: Consent Pengguna)" .-> Dashboard
 ```
 
 **Alur Data Ringkas:**
-1. Pengguna menulis entri jurnal di klien (React PWA).
-2. Teks dienkripsi secara lokal (AES-256-GCM) sebelum meninggalkan perangkat.
-3. *Ciphertext* + IV dikirim via TLS 1.3 ke Firestore — server tidak pernah melihat *plaintext*.
-4. Untuk interaksi AI, teks diproses melalui Cloud Function yang menjalankan *multi-agent system* (Crisis Guard + Conversation & Reflection Agent berbasis Groq API/LLaMA-3.3-70b-versatile + Action Decision Agent) dengan mitigasi kerentanan *OWASP for LLM*.
-5. Respons AI dan status emosi dievaluasi oleh *Action Decision Agent* yang kemudian menentukan tindakan aplikasi (eksplorasi → pemantauan → quest → rujukan psikolog).
+Terdapat **dua jalur terpisah** untuk memastikan privasi (E2EE) tetap terjaga sambil memungkinkan interaksi AI:
+
+1. **Jalur Penyimpanan Jurnal (E2EE):**
+   - Pengguna menulis entri jurnal di klien (React PWA).
+   - Teks (Plaintext) dienkripsi secara lokal (AES-256-GCM dengan kunci dari PBKDF2) sebelum meninggalkan perangkat.
+   - *Ciphertext* + IV dikirim via TLS 1.3 ke Firestore. Server tidak pernah melihat dan tidak bisa mendekripsi isi jurnal.
+   - Saat pengguna mengakses riwayat, *ciphertext* ditarik kembali dan didekripsi di klien.
+2. **Jalur Analisis Emosi (Transient):**
+   - Secara terpisah, untuk interaksi AI, UI mengirim teks jurnal/obrolan (*plaintext*) ke Cloud Function melalui HTTPS POST.
+   - Teks ini hanya singgah sementara di memori server (tidak disimpan) untuk diproses oleh *multi-agent system* (termasuk LLaMA-3.3-70b-versatile) dan dikirimkan ke Groq API.
+   - Respons AI dan status emosi dievaluasi oleh *Action Decision Agent* yang kemudian menentukan tindakan aplikasi (eksplorasi → pemantauan → quest → rujukan psikolog).
+3. **Portal Psikolog:** Hasil analisis emosi (seperti tren *mood* atau sinyal krisis) dari AI diteruskan ke Dashboard Psikolog **hanya jika** pengguna telah memberikan persetujuan (*consent*). Jurnal mentah tetap terenkripsi dan tidak bisa dibaca oleh psikolog kecuali klien membagikannya secara manual.
 
 ---
 

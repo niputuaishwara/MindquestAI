@@ -4,7 +4,8 @@
 
 import { initializeApp } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
-import { onRequest } from 'firebase-functions/v2/https'
+import { getFirestore } from 'firebase-admin/firestore'
+import { onRequest, onCall, HttpsError } from 'firebase-functions/v2/https'
 import { defineSecret } from 'firebase-functions/params'
 import { checkCrisisSignal, buildDistressResponse, DISTRESS_MESSAGES } from './agents/crisisGuard.js'
 import { decideAction } from './agents/actionDecision.js'
@@ -176,3 +177,58 @@ export const analyzeEmotion = onRequest(
     }
   }
 )
+
+// ─── Hapus Akun (deleteUserAccount) ──────────────────────────────────────────
+
+export const deleteUserAccount = onCall(
+  { region: 'asia-southeast2' },
+  async (request) => {
+    // 1. Verifikasi auth
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError('unauthenticated', 'User harus login untuk menghapus akun.')
+    }
+    
+    // Pastikan user tidak mencoba menghapus akun orang lain
+    const targetUid = request.data?.uid;
+    if (targetUid && targetUid !== request.auth.uid) {
+      throw new HttpsError('permission-denied', 'Anda tidak diizinkan menghapus akun pengguna lain.');
+    }
+
+    const uid = request.auth.uid;
+    const db = getFirestore();
+    const batch = db.batch();
+
+    try {
+      // 2. Ambil referensi koleksi dan hapus semua dokumen di dalamnya
+      // Untuk menghindari timeout jika data sangat banyak, fungsi ini menghapus
+      // semua entry secara batch. (Untuk kasus data > 500 perlu rekursif, 
+      // tapi untuk prototype aplikasi jurnal kita ambil sekaligus)
+      
+      const entriesSnap = await db.collection(`journals/${uid}/entries`).get();
+      entriesSnap.docs.forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+
+      const sessionsSnap = await db.collection(`journals/${uid}/sessions`).get();
+      sessionsSnap.docs.forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+
+      // 3. Hapus dokumen parent
+      batch.delete(db.doc(`journals/${uid}`));
+      batch.delete(db.doc(`users/${uid}`));
+
+      // 4. Commit semua penghapusan Firestore
+      await batch.commit();
+
+      // 5. Hapus akun Auth
+      await getAuth().deleteUser(uid);
+
+      return { success: true, message: 'Akun dan semua data berhasil dihapus permanen.' };
+    } catch (error) {
+      console.error('Error saat menghapus akun:', error);
+      throw new HttpsError('internal', 'Gagal menghapus data akun.', error);
+    }
+  }
+)
+

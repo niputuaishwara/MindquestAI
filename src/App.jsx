@@ -26,6 +26,7 @@ import { QuestView } from './components/QuestView'
 import { PetaView } from './components/PetaView'
 import { PsikologPortal } from './components/PsikologPortal'
 import { AdminDashboard } from './components/AdminDashboard'
+import { SettingsView } from './components/SettingsView'
 import { INITIAL_QUESTS } from './types'
 import { addJournalEntry, getJournalEntries, deleteJournalEntry, saveSession } from './services/firestoreService'
 import { useConversation } from './hooks/useConversation'
@@ -39,8 +40,12 @@ export default function App() {
   
   // Mengambil state dari custom hooks Firebase Anda
   const [pin, setPin] = useState(null)
+  // consentData: { given: true, timestamp: ISO } — dikirim ke keyManager saat PIN pertama dibuat
+  const [consentData, setConsentData] = useState(null)
+  // isNewUser: true jika user belum punya wrappedKey di Firestore (belum pernah buat PIN)
+  const [isNewUser, setIsNewUser] = useState(false)
   const { user, profile, loading: authLoading } = useAuth()
-  const { dataKey, ready: keyReady, error: keyError } = useEncryptionKey(user?.uid, pin)
+  const { dataKey, ready: keyReady, error: keyError } = useEncryptionKey(user?.uid, pin, consentData)
 
   // 1. Navigation & UI Overlays
   const [currentMenu, setCurrentMenu] = useState("beranda")
@@ -129,6 +134,20 @@ export default function App() {
       setStats(profile.stats)
     }
   }, [profile])
+
+  // Deteksi apakah user ini baru (belum punya wrappedKey di Firestore).
+  // Hasilnya diteruskan ke OnboardingScreen untuk menampilkan langkah consent.
+  useEffect(() => {
+    if (!user) {
+      setIsNewUser(false)
+      return
+    }
+    import('firebase/firestore').then(({ getDoc, doc: firestoreDoc }) => {
+      getDoc(firestoreDoc(db, 'users', user.uid)).then((snap) => {
+        setIsNewUser(!snap.exists() || !snap.data()?.wrappedKey)
+      }).catch(() => setIsNewUser(false))
+    })
+  }, [user])
 
   // Agentic Action Loop Handler
   useEffect(() => {
@@ -744,10 +763,12 @@ export default function App() {
     return (
       <OnboardingScreen 
         currentUser={user}
+        isNewUser={isNewUser}
         onPinSet={(newPin) => {
           setPinError(null)
           setPin(newPin)
         }}
+        onConsentGiven={(data) => setConsentData(data)}
         externalError={pinError}
         onBack={() => {
           setSplashDone(false)
@@ -823,6 +844,7 @@ export default function App() {
             { id: "jurnal",  label: "JURNAL",     icon: "📜" },
             { id: "quest",   label: "MISI BATIN", icon: "⚔️" },
             { id: "peta",    label: "PETA EMOSI", icon: "🗺️" },
+            { id: "pengaturan", label: "PENGATURAN", icon: "⚙️" },
           ].map(({ id, label, icon }) => {
             const isActive = currentMenu === id
             return (
@@ -890,6 +912,7 @@ export default function App() {
             jurnal:  'Jurnal & Batin',
             quest:   'Misi Batin',
             peta:    'Peta Emosi',
+            pengaturan: 'Pengaturan',
           }[currentMenu]}</span>
         </div>
 
@@ -940,6 +963,10 @@ export default function App() {
             entries={entries}
             stats={stats}
           />
+        )}
+
+        {currentMenu === "pengaturan" && (
+          <SettingsView />
         )}
       </main>
 

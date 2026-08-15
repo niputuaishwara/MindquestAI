@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react'
 import { getOrCreateDataKey } from '@/utils/keyManager'
 
-export function useEncryptionKey(uid, pin) {
+export function useEncryptionKey(uid, pin, consentData) {
   const [dataKey, setDataKey] = useState(null)
   const [ready, setReady] = useState(false)
   const [error, setError] = useState(null)
@@ -24,7 +24,7 @@ export function useEncryptionKey(uid, pin) {
     setReady(false)
     setError(null)
 
-    getOrCreateDataKey(uid, pin)
+    getOrCreateDataKey(uid, pin, consentData ?? null)
       .then((key) => {
         if (!cancelled) {
           setDataKey(key)
